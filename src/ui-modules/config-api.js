@@ -76,8 +76,6 @@ export async function handleUpdateConfig(req, res, currentConfig) {
         // Update config values in memory
         if (newConfig.REQUIRED_API_KEY !== undefined) currentConfig.REQUIRED_API_KEY = newConfig.REQUIRED_API_KEY;
         if (newConfig.HOST !== undefined) currentConfig.HOST = newConfig.HOST;
-        if (newConfig.CALLBACK_URL !== undefined) currentConfig.CALLBACK_URL = newConfig.CALLBACK_URL;
-        if (newConfig.callback_url !== undefined && newConfig.CALLBACK_URL === undefined) currentConfig.CALLBACK_URL = newConfig.callback_url;
         if (newConfig.SERVER_PORT !== undefined) currentConfig.SERVER_PORT = newConfig.SERVER_PORT;
         if (newConfig.MODEL_PROVIDER !== undefined) currentConfig.MODEL_PROVIDER = newConfig.MODEL_PROVIDER;
         if (newConfig.SYSTEM_PROMPT_FILE_PATH !== undefined) currentConfig.SYSTEM_PROMPT_FILE_PATH = newConfig.SYSTEM_PROMPT_FILE_PATH;
@@ -145,7 +143,6 @@ export async function handleUpdateConfig(req, res, currentConfig) {
                 REQUIRED_API_KEY: currentConfig.REQUIRED_API_KEY,
                 SERVER_PORT: currentConfig.SERVER_PORT,
                 HOST: currentConfig.HOST,
-                CALLBACK_URL: currentConfig.CALLBACK_URL,
                 MODEL_PROVIDER: currentConfig.MODEL_PROVIDER,
                 SYSTEM_PROMPT_FILE_PATH: currentConfig.SYSTEM_PROMPT_FILE_PATH,
                 SYSTEM_PROMPT_MODE: currentConfig.SYSTEM_PROMPT_MODE,

@@ -67,7 +67,6 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
             REQUIRED_API_KEY: "123456",
             SERVER_PORT: 3000,
             HOST: '0.0.0.0',
-            CALLBACK_URL: 'http://localhost',
             MODEL_PROVIDER: MODEL_PROVIDER.GEMINI_CLI,
             SYSTEM_PROMPT_FILE_PATH: INPUT_SYSTEM_PROMPT_FILE, // Default value
             SYSTEM_PROMPT_MODE: 'append',
@@ -109,7 +108,6 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         { flag: '--system-prompt-file',   configKey: 'SYSTEM_PROMPT_FILE_PATH', type: 'string' },
         { flag: '--system-prompt-mode',   configKey: 'SYSTEM_PROMPT_MODE',     type: 'enum', validValues: ['overwrite', 'append'] },
         { flag: '--host',                 configKey: 'HOST',                   type: 'string' },
-        { flag: '--callback-url',         configKey: 'CALLBACK_URL',           type: 'string' },
         { flag: '--prompt-log-base-name', configKey: 'PROMPT_LOG_BASE_NAME',   type: 'string' },
         { flag: '--cron-near-minutes',    configKey: 'CRON_NEAR_MINUTES',      type: 'int' },
         { flag: '--cron-refresh-token',   configKey: 'CRON_REFRESH_TOKEN',     type: 'bool' },
@@ -147,14 +145,6 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
                 }
                 break;
         }
-    }
-
-    // 兼容历史/自定义小写字段
-    if (currentConfig.CALLBACK_URL === undefined && currentConfig.callback_url !== undefined) {
-        currentConfig.CALLBACK_URL = currentConfig.callback_url;
-    }
-    if (currentConfig.HOST === undefined && currentConfig.host !== undefined) {
-        currentConfig.HOST = currentConfig.host;
     }
 
     normalizeConfiguredProviders(currentConfig);
@@ -243,3 +233,4 @@ export async function getSystemPromptFileContent(filePath) {
 }
 
 export { ALL_MODEL_PROVIDERS };
+

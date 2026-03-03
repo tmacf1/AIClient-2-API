@@ -1,6 +1,5 @@
 import { getRequestBody } from '../utils/common.js';
 import logger from '../utils/logger.js';
-import { resolveOAuthRedirectAddress } from '../auth/oauth-redirect-utils.js';
 import {
     handleGeminiCliOAuth,
     handleGeminiAntigravityOAuth,
@@ -28,11 +27,6 @@ export async function handleGenerateAuthUrl(req, res, currentConfig, providerTyp
         } catch (e) {
             // 如果没有请求体，使用默认空对象
         }
-
-        // 固定从 configs/config.json 的 CALLBACK_URL（含协议）读取回调地址
-        const redirectAddress = resolveOAuthRedirectAddress(currentConfig, options, { protocol: 'http', host: 'localhost' });
-        options.redirectHost = redirectAddress.host;
-        options.redirectProtocol = redirectAddress.protocol;
 
         // 根据提供商类型生成授权链接并启动回调服务器
         if (providerType === 'gemini-cli-oauth') {

@@ -9,7 +9,6 @@ import { broadcastEvent } from '../services/ui-manager.js';
 import { autoLinkProviderConfigs } from '../services/service-manager.js';
 import { CONFIG } from '../core/config-manager.js';
 import { getProxyConfigForProvider } from '../utils/proxy-utils.js';
-import { resolveOAuthRedirectAddress } from './oauth-redirect-utils.js';
 
 /**
  * Codex OAuth 配置
@@ -28,22 +27,6 @@ const CODEX_OAUTH_CONFIG = {
  * 活动的服务器实例管理（与 gemini-oauth 一致）
  */
 const activeServers = new Map();
-
-function getRedirectProtocol(options = {}) {
-    const protocol = String(options.redirectProtocol || 'http').replace(':', '').trim().toLowerCase();
-    return protocol || 'http';
-}
-
-function getRedirectHost(options = {}) {
-    const host = String(options.redirectHost || 'localhost').trim();
-    return host || 'localhost';
-}
-
-function buildCodexRedirectUri(options = {}, callbackPort = CODEX_OAUTH_CONFIG.port) {
-    const protocol = getRedirectProtocol(options);
-    const host = getRedirectHost(options);
-    return `${protocol}://${host}:${callbackPort}/auth/callback`;
-}
 
 /**
  * 关闭指定端口的活动服务器
@@ -80,10 +63,8 @@ async function closeActiveServer(provider, port = null) {
  * 实现 OAuth2 + PKCE 流程
  */
 class CodexAuth {
-    constructor(config, options = {}) {
+    constructor(config) {
         this.config = config;
-        this.callbackPort = parseInt(options.port) || CODEX_OAUTH_CONFIG.port;
-        this.redirectUri = options.redirectUri || buildCodexRedirectUri(options, this.callbackPort);
         
         // 配置代理支持
         const axiosConfig = { timeout: 30000 };
@@ -133,7 +114,7 @@ class CodexAuth {
         const authUrl = new URL(CODEX_OAUTH_CONFIG.authUrl);
         authUrl.searchParams.set('client_id', CODEX_OAUTH_CONFIG.clientId);
         authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('redirect_uri', this.redirectUri);
+        authUrl.searchParams.set('redirect_uri', CODEX_OAUTH_CONFIG.redirectUri);
         authUrl.searchParams.set('scope', CODEX_OAUTH_CONFIG.scopes);
         authUrl.searchParams.set('state', state);
         authUrl.searchParams.set('code_challenge', pkce.challenge);
@@ -221,7 +202,7 @@ class CodexAuth {
         const authUrl = new URL(CODEX_OAUTH_CONFIG.authUrl);
         authUrl.searchParams.set('client_id', CODEX_OAUTH_CONFIG.clientId);
         authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('redirect_uri', this.redirectUri);
+        authUrl.searchParams.set('redirect_uri', CODEX_OAUTH_CONFIG.redirectUri);
         authUrl.searchParams.set('scope', CODEX_OAUTH_CONFIG.scopes);
         authUrl.searchParams.set('state', state);
         authUrl.searchParams.set('code_challenge', pkce.challenge);
@@ -275,14 +256,14 @@ class CodexAuth {
      */
     async startCallbackServer() {
         // 先清理该提供商或该端口的旧服务器
-        await closeActiveServer('openai-codex-oauth', this.callbackPort);
+        await closeActiveServer('openai-codex-oauth', CODEX_OAUTH_CONFIG.port);
 
         return new Promise((resolve, reject) => {
             const server = http.createServer();
 
             server.on('request', (req, res) => {
                 if (req.url.startsWith('/auth/callback')) {
-                    const url = new URL(req.url, this.redirectUri);
+                    const url = new URL(req.url, `http://localhost:${CODEX_OAUTH_CONFIG.port}`);
                     const code = url.searchParams.get('code');
                     const state = url.searchParams.get('state');
                     const error = url.searchParams.get('error');
@@ -348,15 +329,15 @@ class CodexAuth {
                 }
             });
 
-            server.listen(this.callbackPort, () => {
-                logger.info(`${CODEX_OAUTH_CONFIG.logPrefix} Callback server listening on port ${this.callbackPort}`);
-                activeServers.set('openai-codex-oauth', { server, port: this.callbackPort });
+            server.listen(CODEX_OAUTH_CONFIG.port, () => {
+                logger.info(`${CODEX_OAUTH_CONFIG.logPrefix} Callback server listening on port ${CODEX_OAUTH_CONFIG.port}`);
+                activeServers.set('openai-codex-oauth', { server, port: CODEX_OAUTH_CONFIG.port });
                 resolve(server);
             });
 
             server.on('error', (error) => {
                 if (error.code === 'EADDRINUSE') {
-                    reject(new Error(`Port ${this.callbackPort} is already in use. Please close other applications using this port.`));
+                    reject(new Error(`Port ${CODEX_OAUTH_CONFIG.port} is already in use. Please close other applications using this port.`));
                 } else {
                     reject(error);
                 }
@@ -412,7 +393,7 @@ class CodexAuth {
                     grant_type: 'authorization_code',
                     client_id: CODEX_OAUTH_CONFIG.clientId,
                     code: code,
-                    redirect_uri: this.redirectUri,
+                    redirect_uri: CODEX_OAUTH_CONFIG.redirectUri,
                     code_verifier: codeVerifier
                 }).toString(),
                 {
@@ -651,13 +632,7 @@ export async function refreshCodexTokensWithRetry(refreshToken, config = {}, max
  * @returns {Promise<Object>} 返回认证结果
  */
 export async function handleCodexOAuth(currentConfig, options = {}) {
-    const redirectAddress = resolveOAuthRedirectAddress(currentConfig, options, { protocol: 'http', host: 'localhost' });
-    const resolvedOptions = {
-        ...options,
-        redirectProtocol: options.redirectProtocol || redirectAddress.protocol,
-        redirectHost: options.redirectHost || redirectAddress.host
-    };
-    const auth = new CodexAuth(currentConfig, resolvedOptions);
+    const auth = new CodexAuth(currentConfig);
 
     try {
         logger.info('[Codex Auth] Generating OAuth URL...');
@@ -807,8 +782,8 @@ export async function handleCodexOAuth(currentConfig, options = {}) {
                 provider: 'openai-codex-oauth',
                 method: 'oauth2-pkce',
                 sessionId: sessionId,
-                redirectUri: auth.redirectUri,
-                port: auth.callbackPort,
+                redirectUri: CODEX_OAUTH_CONFIG.redirectUri,
+                port: CODEX_OAUTH_CONFIG.port,
                 instructions: [
                     '1. 点击下方按钮在浏览器中打开授权链接',
                     '2. 使用您的 OpenAI 账户登录',
@@ -828,7 +803,7 @@ export async function handleCodexOAuth(currentConfig, options = {}) {
                 provider: 'openai-codex-oauth',
                 method: 'oauth2-pkce',
                 instructions: [
-                    `1. 确保端口 ${auth.callbackPort} 未被占用`,
+                    `1. 确保端口 ${CODEX_OAUTH_CONFIG.port} 未被占用`,
                     '2. 确保可以访问 auth.openai.com',
                     '3. 确保浏览器可以正常打开',
                     '4. 如果问题持续，请检查网络连接'
