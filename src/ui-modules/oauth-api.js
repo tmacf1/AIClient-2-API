@@ -12,21 +12,55 @@ import {
     importAwsCredentials
 } from '../auth/oauth-handlers.js';
 
-function resolveRedirectHostFromConfig(currentConfig = {}) {
+function normalizeRedirectHost(hostname = '') {
+    if (hostname === '0.0.0.0') {
+        return 'localhost';
+    }
+    return hostname || 'localhost';
+}
+
+function resolveRedirectAddressFromConfig(currentConfig = {}) {
+    const rawCallbackUrl = String(currentConfig.CALLBACK_URL || '').trim();
+    if (rawCallbackUrl) {
+        try {
+            const callbackUrl = new URL(rawCallbackUrl);
+            return {
+                redirectProtocol: callbackUrl.protocol.replace(':', '') || 'http',
+                redirectHost: normalizeRedirectHost(callbackUrl.hostname)
+            };
+        } catch (error) {
+            logger.warn(`[UI API] Failed to parse CALLBACK_URL from config: "${rawCallbackUrl}", fallback to HOST`);
+        }
+    }
+
     const rawHost = String(currentConfig.HOST || '').trim();
     if (!rawHost) {
-        return 'localhost';
+        return {
+            redirectProtocol: 'http',
+            redirectHost: 'localhost'
+        };
     }
 
     // 兼容 HOST 可能被写成带协议或带端口格式，统一提取 hostname
     try {
         if (rawHost.includes('://')) {
-            return new URL(rawHost).hostname || 'localhost';
+            const hostUrl = new URL(rawHost);
+            return {
+                redirectProtocol: hostUrl.protocol.replace(':', '') || 'http',
+                redirectHost: normalizeRedirectHost(hostUrl.hostname)
+            };
         }
-        return new URL(`http://${rawHost}`).hostname || 'localhost';
+        const hostUrl = new URL(`http://${rawHost}`);
+        return {
+            redirectProtocol: 'http',
+            redirectHost: normalizeRedirectHost(hostUrl.hostname)
+        };
     } catch (error) {
         logger.warn(`[UI API] Failed to parse HOST from config: "${rawHost}", fallback to raw value`);
-        return rawHost;
+        return {
+            redirectProtocol: 'http',
+            redirectHost: normalizeRedirectHost(rawHost)
+        };
     }
 }
 
@@ -46,9 +80,10 @@ export async function handleGenerateAuthUrl(req, res, currentConfig, providerTyp
             // 如果没有请求体，使用默认空对象
         }
 
-        // 固定从 configs/config.json 的 HOST 配置中获取 redirect host
-        options.redirectHost = resolveRedirectHostFromConfig(currentConfig);
-        options.redirectProtocol = options.redirectProtocol || 'http';
+        // 固定从 configs/config.json 的 CALLBACK_URL（含协议）读取回调地址
+        const redirectAddress = resolveRedirectAddressFromConfig(currentConfig);
+        options.redirectHost = redirectAddress.redirectHost;
+        options.redirectProtocol = redirectAddress.redirectProtocol;
 
         // 根据提供商类型生成授权链接并启动回调服务器
         if (providerType === 'gemini-cli-oauth') {
