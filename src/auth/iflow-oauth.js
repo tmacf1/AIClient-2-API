@@ -39,22 +39,6 @@ const IFLOW_OAUTH_CONFIG = {
  */
 const activeIFlowServers = new Map();
 
-function getRedirectProtocol(options = {}) {
-    const protocol = String(options.redirectProtocol || 'http').replace(':', '').trim().toLowerCase();
-    return protocol || 'http';
-}
-
-function getRedirectHost(options = {}) {
-    const host = String(options.redirectHost || 'localhost').trim();
-    return host || 'localhost';
-}
-
-function buildIFlowRedirectUri(options = {}, port) {
-    const protocol = getRedirectProtocol(options);
-    const host = getRedirectHost(options);
-    return `${protocol}://${host}:${port}/oauth2callback`;
-}
-
 /**
  * 创建带代理支持的 fetch 请求
  * 使用 axios 替代原生 fetch，以正确支持代理配置
@@ -149,8 +133,8 @@ function generateResponsePage(isSuccess, message) {
  * @param {number} port - 回调端口
  * @returns {Object} 包含 authUrl 和 redirectUri
  */
-function generateIFlowAuthorizationURL(state, port, options = {}) {
-    const redirectUri = buildIFlowRedirectUri(options, port);
+function generateIFlowAuthorizationURL(state, port) {
+    const redirectUri = `http://localhost:${port}/oauth2callback`;
     const params = new URLSearchParams({
         loginMethod: 'phone',
         type: 'phone',
@@ -305,7 +289,7 @@ function createIFlowCallbackServer(port, redirectUri, expectedState, options = {
     return new Promise((resolve, reject) => {
         const server = http.createServer(async (req, res) => {
             try {
-                const url = new URL(req.url, redirectUri);
+                const url = new URL(req.url, `http://localhost:${port}`);
                 
                 if (url.pathname === '/oauth2callback') {
                     const code = url.searchParams.get('code');
@@ -471,7 +455,7 @@ export async function handleIFlowOAuth(currentConfig, options = {}) {
     const state = crypto.randomBytes(16).toString('base64url');
     
     // 生成授权链接
-    const { authUrl, redirectUri } = generateIFlowAuthorizationURL(state, port, options);
+    const { authUrl, redirectUri } = generateIFlowAuthorizationURL(state, port);
     
     logger.info(`${IFLOW_OAUTH_CONFIG.logPrefix} 生成授权链接: ${authUrl}`);
     

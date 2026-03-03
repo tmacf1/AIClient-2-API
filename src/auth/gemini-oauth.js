@@ -38,22 +38,6 @@ const OAUTH_PROVIDERS = {
  */
 const activeServers = new Map();
 
-function getRedirectProtocol(options = {}) {
-    const protocol = String(options.redirectProtocol || 'http').replace(':', '').trim().toLowerCase();
-    return protocol || 'http';
-}
-
-function getRedirectHost(options = {}) {
-    const host = String(options.redirectHost || 'localhost').trim();
-    return host || 'localhost';
-}
-
-function buildRedirectUri(options = {}, port) {
-    const protocol = getRedirectProtocol(options);
-    const host = getRedirectHost(options);
-    return `${protocol}://${host}:${port}`;
-}
-
 /**
  * 生成 HTML 响应页面
  * @param {boolean} isSuccess - 是否成功
@@ -242,7 +226,8 @@ async function handleGoogleOAuth(providerKey, currentConfig, options = {}) {
     }
     
     const port = parseInt(options.port) || config.port;
-    const redirectUri = buildRedirectUri(options, port);
+    const host = 'localhost';
+    const redirectUri = `http://${host}:${port}`;
 
     // 获取代理配置
     const proxyConfig = getGoogleAuthProxyConfig(currentConfig, providerKey);

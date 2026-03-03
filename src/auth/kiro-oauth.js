@@ -57,30 +57,6 @@ const activeKiroServers = new Map();
  */
 const activeKiroPollingTasks = new Map();
 
-function getRedirectProtocol(options = {}) {
-    const protocol = String(options.redirectProtocol || 'http').replace(':', '').trim().toLowerCase();
-    return protocol || 'http';
-}
-
-function getRedirectHost(options = {}) {
-    const host = String(options.redirectHost || '127.0.0.1').trim();
-    return host || '127.0.0.1';
-}
-
-function buildKiroRedirectUri(options = {}, port) {
-    const protocol = getRedirectProtocol(options);
-    const host = getRedirectHost(options);
-    return `${protocol}://${host}:${port}/oauth/callback`;
-}
-
-function getKiroServerListenHost(options = {}) {
-    const host = getRedirectHost(options).toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1') {
-        return '127.0.0.1';
-    }
-    return '0.0.0.0';
-}
-
 /**
  * 创建带代理支持的 fetch 请求
  * 使用 axios 替代原生 fetch，以正确支持代理配置
@@ -214,7 +190,7 @@ export async function handleKiroOAuth(currentConfig, options = {}) {
 }
 
 /**
- * Kiro Social Auth (Google/GitHub) - 使用动态 HTTP 回调地址
+ * Kiro Social Auth (Google/GitHub) - 使用 HTTP localhost 回调
  */
 async function handleKiroSocialAuth(provider, currentConfig, options = {}) {
     // 生成 PKCE 参数
@@ -235,7 +211,8 @@ async function handleKiroSocialAuth(provider, currentConfig, options = {}) {
         handlerPort = await startKiroCallbackServer(codeVerifier, state, options);
     }
     
-    const redirectUri = buildKiroRedirectUri(options, handlerPort);
+    // 使用 HTTP localhost 作为 redirect_uri
+    const redirectUri = `http://127.0.0.1:${handlerPort}/oauth/callback`;
     
     // 构建授权 URL
     const authUrl = `${KIRO_OAUTH_CONFIG.authServiceEndpoint}/login?` +
@@ -538,12 +515,12 @@ async function closeKiroServer(provider, port = null) {
  * 创建 Kiro HTTP 回调服务器
  */
 function createKiroHttpCallbackServer(port, codeVerifier, expectedState, options = {}) {
-    const redirectUri = buildKiroRedirectUri(options, port);
+    const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
     
     return new Promise((resolve, reject) => {
         const server = http.createServer(async (req, res) => {
             try {
-                const url = new URL(req.url, redirectUri);
+                const url = new URL(req.url, `http://127.0.0.1:${port}`);
                 
                 if (url.pathname === '/oauth/callback') {
                     const code = url.searchParams.get('code');
@@ -645,7 +622,7 @@ function createKiroHttpCallbackServer(port, codeVerifier, expectedState, options
         });
         
         server.on('error', reject);
-        server.listen(port, getKiroServerListenHost(options), () => resolve(server));
+        server.listen(port, '127.0.0.1', () => resolve(server));
         
         // 超时自动关闭
         setTimeout(() => {
@@ -1162,3 +1139,5 @@ export async function importAwsCredentials(credentials, skipDuplicateCheck = fal
         };
     }
 }
+
+
