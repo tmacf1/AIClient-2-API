@@ -8,6 +8,7 @@ import { broadcastEvent } from '../services/ui-manager.js';
 import { autoLinkProviderConfigs } from '../services/service-manager.js';
 import { CONFIG } from '../core/config-manager.js';
 import { getProxyConfigForProvider } from '../utils/proxy-utils.js';
+import { resolveOAuthRedirectAddress } from './oauth-redirect-utils.js';
 
 /**
  * iFlow OAuth 配置
@@ -38,6 +39,22 @@ const IFLOW_OAUTH_CONFIG = {
  * 活动的 iFlow 回调服务器管理
  */
 const activeIFlowServers = new Map();
+
+function getRedirectProtocol(options = {}) {
+    const protocol = String(options.redirectProtocol || 'http').replace(':', '').trim().toLowerCase();
+    return protocol || 'http';
+}
+
+function getRedirectHost(options = {}) {
+    const host = String(options.redirectHost || 'localhost').trim();
+    return host || 'localhost';
+}
+
+function buildIFlowRedirectUri(options = {}, port) {
+    const protocol = getRedirectProtocol(options);
+    const host = getRedirectHost(options);
+    return `${protocol}://${host}:${port}/oauth2callback`;
+}
 
 /**
  * 创建带代理支持的 fetch 请求
@@ -133,8 +150,8 @@ function generateResponsePage(isSuccess, message) {
  * @param {number} port - 回调端口
  * @returns {Object} 包含 authUrl 和 redirectUri
  */
-function generateIFlowAuthorizationURL(state, port) {
-    const redirectUri = `http://localhost:${port}/oauth2callback`;
+function generateIFlowAuthorizationURL(state, port, options = {}) {
+    const redirectUri = buildIFlowRedirectUri(options, port);
     const params = new URLSearchParams({
         loginMethod: 'phone',
         type: 'phone',
@@ -289,7 +306,7 @@ function createIFlowCallbackServer(port, redirectUri, expectedState, options = {
     return new Promise((resolve, reject) => {
         const server = http.createServer(async (req, res) => {
             try {
-                const url = new URL(req.url, `http://localhost:${port}`);
+                const url = new URL(req.url, redirectUri);
                 
                 if (url.pathname === '/oauth2callback') {
                     const code = url.searchParams.get('code');
@@ -450,12 +467,18 @@ function createIFlowCallbackServer(port, redirectUri, expectedState, options = {
 export async function handleIFlowOAuth(currentConfig, options = {}) {
     const port = parseInt(options.port) || IFLOW_OAUTH_CONFIG.callbackPort;
     const providerKey = 'openai-iflow';
+    const redirectAddress = resolveOAuthRedirectAddress(currentConfig, options, { protocol: 'http', host: 'localhost' });
+    const resolvedOptions = {
+        ...options,
+        redirectProtocol: options.redirectProtocol || redirectAddress.protocol,
+        redirectHost: options.redirectHost || redirectAddress.host
+    };
     
     // 生成 state 参数
     const state = crypto.randomBytes(16).toString('base64url');
     
     // 生成授权链接
-    const { authUrl, redirectUri } = generateIFlowAuthorizationURL(state, port);
+    const { authUrl, redirectUri } = generateIFlowAuthorizationURL(state, port, resolvedOptions);
     
     logger.info(`${IFLOW_OAUTH_CONFIG.logPrefix} 生成授权链接: ${authUrl}`);
     
@@ -464,7 +487,7 @@ export async function handleIFlowOAuth(currentConfig, options = {}) {
     
     // 启动回调服务器
     try {
-        const server = await createIFlowCallbackServer(port, redirectUri, state, options);
+        const server = await createIFlowCallbackServer(port, redirectUri, state, resolvedOptions);
         activeIFlowServers.set(providerKey, { server, port });
     } catch (error) {
         throw new Error(`启动 iFlow 回调服务器失败: ${error.message}`);
@@ -477,7 +500,7 @@ export async function handleIFlowOAuth(currentConfig, options = {}) {
             redirectUri: redirectUri,
             callbackPort: port,
             state: state,
-            ...options
+            ...resolvedOptions
         }
     };
 }

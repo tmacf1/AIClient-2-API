@@ -149,6 +149,14 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         }
     }
 
+    // 兼容历史/自定义小写字段
+    if (currentConfig.CALLBACK_URL === undefined && currentConfig.callback_url !== undefined) {
+        currentConfig.CALLBACK_URL = currentConfig.callback_url;
+    }
+    if (currentConfig.HOST === undefined && currentConfig.host !== undefined) {
+        currentConfig.HOST = currentConfig.host;
+    }
+
     normalizeConfiguredProviders(currentConfig);
 
     if (!currentConfig.SYSTEM_PROMPT_FILE_PATH) {

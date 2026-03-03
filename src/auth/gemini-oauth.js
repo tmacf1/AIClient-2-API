@@ -8,6 +8,7 @@ import { broadcastEvent } from '../services/ui-manager.js';
 import { autoLinkProviderConfigs } from '../services/service-manager.js';
 import { CONFIG } from '../core/config-manager.js';
 import { getGoogleAuthProxyConfig } from '../utils/proxy-utils.js';
+import { resolveOAuthRedirectAddress } from './oauth-redirect-utils.js';
 
 /**
  * OAuth 提供商配置
@@ -37,6 +38,22 @@ const OAUTH_PROVIDERS = {
  * 活动的服务器实例管理
  */
 const activeServers = new Map();
+
+function getRedirectProtocol(options = {}) {
+    const protocol = String(options.redirectProtocol || 'http').replace(':', '').trim().toLowerCase();
+    return protocol || 'http';
+}
+
+function getRedirectHost(options = {}) {
+    const host = String(options.redirectHost || 'localhost').trim();
+    return host || 'localhost';
+}
+
+function buildRedirectUri(options = {}, port) {
+    const protocol = getRedirectProtocol(options);
+    const host = getRedirectHost(options);
+    return `${protocol}://${host}:${port}`;
+}
 
 /**
  * 生成 HTML 响应页面
@@ -226,8 +243,13 @@ async function handleGoogleOAuth(providerKey, currentConfig, options = {}) {
     }
     
     const port = parseInt(options.port) || config.port;
-    const host = 'localhost';
-    const redirectUri = `http://${host}:${port}`;
+    const redirectAddress = resolveOAuthRedirectAddress(currentConfig, options, { protocol: 'http', host: 'localhost' });
+    const resolvedOptions = {
+        ...options,
+        redirectProtocol: options.redirectProtocol || redirectAddress.protocol,
+        redirectHost: options.redirectHost || redirectAddress.host
+    };
+    const redirectUri = buildRedirectUri(resolvedOptions, port);
 
     // 获取代理配置
     const proxyConfig = getGoogleAuthProxyConfig(currentConfig, providerKey);
@@ -256,7 +278,7 @@ async function handleGoogleOAuth(providerKey, currentConfig, options = {}) {
     const credPath = path.join(os.homedir(), config.credentialsDir, config.credentialsFile);
     
     try {
-        await createOAuthCallbackServer(config, redirectUri, authClient, credPath, providerKey, options);
+        await createOAuthCallbackServer(config, redirectUri, authClient, credPath, providerKey, resolvedOptions);
     } catch (error) {
         throw new Error(`启动回调服务器失败: ${error.message}`);
     }
@@ -267,7 +289,7 @@ async function handleGoogleOAuth(providerKey, currentConfig, options = {}) {
             provider: providerKey,
             redirectUri: redirectUri,
             port: port,
-            ...options
+            ...resolvedOptions
         }
     };
 }
