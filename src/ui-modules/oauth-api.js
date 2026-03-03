@@ -12,6 +12,39 @@ import {
     importAwsCredentials
 } from '../auth/oauth-handlers.js';
 
+function normalizeForwardedHeaderValue(value) {
+    if (!value) return '';
+    if (Array.isArray(value)) {
+        return value[0] ? String(value[0]).split(',')[0].trim() : '';
+    }
+    return String(value).split(',')[0].trim();
+}
+
+function resolveRequestAccessAddress(req) {
+    const host = normalizeForwardedHeaderValue(req.headers['x-forwarded-host']) ||
+        normalizeForwardedHeaderValue(req.headers.host);
+
+    if (!host) {
+        return null;
+    }
+
+    const protocol = normalizeForwardedHeaderValue(req.headers['x-forwarded-proto']) ||
+        (req.socket?.encrypted ? 'https' : 'http');
+
+    try {
+        const requestURL = new URL(`${protocol}://${host}`);
+        return {
+            protocol: requestURL.protocol.replace(':', ''),
+            host: requestURL.host,
+            hostname: requestURL.hostname,
+            origin: requestURL.origin
+        };
+    } catch (error) {
+        logger.warn(`[UI API] Failed to resolve request access address from host "${host}": ${error.message}`);
+        return null;
+    }
+}
+
 /**
  * 生成 OAuth 授权 URL
  */
@@ -26,6 +59,14 @@ export async function handleGenerateAuthUrl(req, res, currentConfig, providerTyp
             options = await getRequestBody(req);
         } catch (e) {
             // 如果没有请求体，使用默认空对象
+        }
+
+        // 自动注入当前浏览器访问地址，供 OAuth 回调地址动态生成使用
+        const accessAddress = resolveRequestAccessAddress(req);
+        if (accessAddress) {
+            options.redirectHost = options.redirectHost || accessAddress.hostname;
+            options.redirectProtocol = options.redirectProtocol || accessAddress.protocol;
+            options.redirectOrigin = options.redirectOrigin || accessAddress.origin;
         }
 
         // 根据提供商类型生成授权链接并启动回调服务器
